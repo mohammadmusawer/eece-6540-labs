@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
@@ -13,6 +14,7 @@
 #include "AOCLUtils/aocl_utils.h"
 
 using namespace aocl_utils;
+using namespace std;
 void cleanup();
 #endif
 
@@ -21,7 +23,7 @@ void cleanup();
 static char dev_name[DEVICE_NAME_LEN];
 
 /* Error handling: check for any return errors */ 
-void checkReturnError(cl_int ret, string errorMessage){
+void checkReturnError(cl_int ret, char* errorMessage){
 	
     if(ret != CL_SUCCESS){
 
@@ -148,7 +150,7 @@ int main()
     checkReturnError(ret, "Failed to build program.");   
 
     /* Create OpenCL Kernel */
-    kernel = clCreateKernel(program, "string_search", &ret);
+    kernel = clCreateKernel(program, "pi_calculation", &ret);
  
     checkReturnError(ret, "Failed to create kernel.");
     
@@ -159,14 +161,16 @@ int main()
           CL_MEM_COPY_HOST_PTR, sizeof(result), result, NULL);
 
     checkReturnError(ret, "Failed to create buffers.");
+	
+    cl_int iVal = 64;	//iteration value
 
     ret = 0;
     /* Create kernel argument */
-    ret = clSetKernelArg(kernel, 0, sizeof(pattern), pattern);
-    ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &text_buffer);
-    ret |= clSetKernelArg(kernel, 2, sizeof(chars_per_item), &chars_per_item);
-    ret |= clSetKernelArg(kernel, 3, 4 * sizeof(int), NULL);
-    ret |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &result_buffer);
+    ret = clSetKernelArg(kernel, 0, sizeof(pattern), iVal);
+    ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &result_buffer);
+    ret |= clSetKernelArg(kernel, 2, sizeof(cl_float), NULL);
+    ret |= clSetKernelArg(kernel, 3, sizeof(cl_int), &global_size);
+    //ret |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &result_buffer);
     
     checkReturnError(ret, "Couldn't set a kernel argument.");
 
@@ -182,17 +186,21 @@ int main()
  
     checkReturnError(ret, "Couldn't read the buffer.");
     
+	
+    printf("Pi value = %f\n", result[0]);
+
+    /*
     printf("\nResults: \n");
     printf("Result[0] : %d\n", result[0]);
     printf("Result[1] : %d\n", result[1]);
     printf("Result[2] : %d\n", result[2]);
-    printf("Result[3] : %d\n", result[3]);
-
-
+    printf("Result[3] : %d\n", result[3]);	
+    */	
+	
+    
     /* free resources */
-    // free(text);
-
-    clReleaseMemObject(text_buffer);
+    free(result);
+    
     clReleaseMemObject(result_buffer);
     clReleaseCommandQueue(command_queue);
     clReleaseKernel(kernel);
