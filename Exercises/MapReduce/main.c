@@ -20,14 +20,12 @@ void cleanup();
 #define DEVICE_NAME_LEN 128
 static char dev_name[DEVICE_NAME_LEN];
 
-#define TEXT_FILE "kafka.txt"
-
 /* Error handling: check for any return errors */ 
-void checkReturnError(cl_int ret){
+void checkReturnError(cl_int ret, string errorMessage){
 	
     if(ret != CL_SUCCESS){
 
-        printf("Error in function\n");
+        printf("%s\n", errorMessage);
         exit(1);    //exit failure
     }
 
@@ -54,13 +52,6 @@ int main()
     char fileName[] = "./mykernel.cl";
     char *source_str;
     size_t source_size;
-
-    int result[4] = {0, 0, 0, 0};
-    char pattern[16] = {'t','h','a','t','w','i','t','h','h','a','v','e','f','r','o','m'};
-    FILE *text_handle;
-    char *text;
-    size_t text_size;
-    int chars_per_item;
 
 #ifdef __APPLE__
     /* Get Platform and Device Info */
@@ -100,13 +91,16 @@ int main()
     clGetDeviceInfo(device_id, CL_DEVICE_MAX_COMPUTE_UNITS,
       sizeof(num_comp_units), &num_comp_units, NULL);
     printf("num_comp_units=%u\n", num_comp_units);
+
 #ifdef __APPLE__
     clGetDeviceInfo(device_id, CL_DEVICE_MAX_WORK_GROUP_SIZE,
               sizeof(local_size), &local_size, NULL);
 #endif
+
 #ifdef AOCL  /* local size reported Altera FPGA is incorrect */
     local_size = 16;
 #endif
+
     printf("local_size=%lu\n", local_size);
     global_size = num_comp_units * local_size;
     printf("global_size=%lu, local_size=%lu\n", global_size, local_size);
@@ -124,6 +118,7 @@ int main()
       fprintf(stderr, "Failed to load kernel.\n");
       exit(1);
     }
+
     source_str = (char*)malloc(MAX_SOURCE_SIZE);
     source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
     fclose(fp);
@@ -131,10 +126,9 @@ int main()
     /* Create Kernel Program from the source */
     program = clCreateProgramWithSource(context, 1, (const char **)&source_str,
               (const size_t *)&source_size, &ret);
-    if (ret != CL_SUCCESS) {
-      printf("Failed to create program from source.\n");
-      exit(1);
-    }
+
+    checkReturnError(ret, "Failed to create program from source.");
+    
 #else
 
 #ifdef AOCL  /* on FPGA we need to create kernel from binary */
@@ -150,41 +144,21 @@ int main()
 
     /* Build Kernel Program */
     ret = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
-    if (ret != CL_SUCCESS) {
-      printf("Failed to build program.\n");
-      exit(1);
-    }
+    
+    checkReturnError(ret, "Failed to build program.");   
 
     /* Create OpenCL Kernel */
     kernel = clCreateKernel(program, "string_search", &ret);
-    if (ret != CL_SUCCESS) {
-      printf("Failed to create kernel.\n");
-      exit(1);
-    }
-
-    /* Read text file and place content into buffer */
-    text_handle = fopen(TEXT_FILE, "r");
-    if(text_handle == NULL) {
-       perror("Couldn't find the text file");
-       exit(1);
-    }
-    fseek(text_handle, 0, SEEK_END);
-    text_size = ftell(text_handle)-1;
-    rewind(text_handle);
-    text = (char*)calloc(text_size, sizeof(char));
-    fread(text, sizeof(char), text_size, text_handle);
-    fclose(text_handle);
-    chars_per_item = text_size / global_size + 1;
-
-    /* Create buffers to hold the text characters and count */
-    cl_mem text_buffer = clCreateBuffer(context, CL_MEM_READ_ONLY |
-          CL_MEM_COPY_HOST_PTR, text_size, text, &ret);
-    if(ret < 0) {
-       perror("Couldn't create a buffer");
-       exit(1);
-    };
+ 
+    checkReturnError(ret, "Failed to create kernel.");
+    
+    /* Place content into buffer */
+    
+    /* Create buffers */
     cl_mem result_buffer = clCreateBuffer(context, CL_MEM_READ_WRITE |
           CL_MEM_COPY_HOST_PTR, sizeof(result), result, NULL);
+
+    checkReturnError(ret, "Failed to create buffers.");
 
     ret = 0;
     /* Create kernel argument */
@@ -194,39 +168,29 @@ int main()
     ret |= clSetKernelArg(kernel, 3, 4 * sizeof(int), NULL);
     ret |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &result_buffer);
     
-    checkReturnError(ret);
-
-    if(ret < 0) {
-       printf("Couldn't set a kernel argument");
-       exit(1);
-    };
+    checkReturnError(ret, "Couldn't set a kernel argument.");
 
     /* Enqueue kernel */
     ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL, &global_size,
           &local_size, 0, NULL, NULL);
-    if(ret < 0) {
-       perror("Couldn't enqueue the kernel");
-       printf("Error code: %d\n", ret);
-       exit(1);
-    }
-
+    
+    checkReturnError(ret, "Couldn't enqueue the kernel.");
+ 
     /* Read and print the result */
     ret = clEnqueueReadBuffer(command_queue, result_buffer, CL_TRUE, 0,
        sizeof(result), &result, 0, NULL, NULL);
-    if(ret < 0) {
-       perror("Couldn't read the buffer");
-       exit(1);
-    }
-
+ 
+    checkReturnError(ret, "Couldn't read the buffer.");
+    
     printf("\nResults: \n");
-    printf("Number of occurrences of 'that': %d\n", result[0]);
-    printf("Number of occurrences of 'with': %d\n", result[1]);
-    printf("Number of occurrences of 'have': %d\n", result[2]);
-    printf("Number of occurrences of 'from': %d\n", result[3]);
+    printf("Result[0] : %d\n", result[0]);
+    printf("Result[1] : %d\n", result[1]);
+    printf("Result[2] : %d\n", result[2]);
+    printf("Result[3] : %d\n", result[3]);
 
 
     /* free resources */
-    free(text);
+    // free(text);
 
     clReleaseMemObject(text_buffer);
     clReleaseMemObject(result_buffer);
