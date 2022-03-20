@@ -22,6 +22,17 @@ static char dev_name[DEVICE_NAME_LEN];
 
 #define TEXT_FILE "kafka.txt"
 
+/* Error handling: check for any return errors */ 
+void checkReturnError(cl_int ret){
+	
+    if(ret != CL_SUCCESS){
+
+        printf("Error in function\n");
+        exit(1);    //exit failure
+    }
+
+}
+
 int main()
 {
     cl_uint platformCount;
@@ -68,7 +79,7 @@ int main()
     clGetPlatformIDs(0, NULL, &platformCount);
     platforms = (cl_platform_id*) malloc(sizeof(cl_platform_id) * platformCount);
     // Get the OpenCL platform.
-    platforms[0] = findPlatform("Intel(R) FPGA");
+    platforms[0] = findPlatform("Intel(R) FPGA Emulation");
     if(platforms[0] == NULL) {
       printf("ERROR: Unable to find Intel(R) FPGA OpenCL platform.\n");
       return false;
@@ -182,6 +193,9 @@ int main()
     ret |= clSetKernelArg(kernel, 2, sizeof(chars_per_item), &chars_per_item);
     ret |= clSetKernelArg(kernel, 3, 4 * sizeof(int), NULL);
     ret |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &result_buffer);
+    
+    checkReturnError(ret);
+
     if(ret < 0) {
        printf("Couldn't set a kernel argument");
        exit(1);
