@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <string.h>
 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
@@ -14,7 +13,7 @@
 #include "AOCLUtils/aocl_utils.h"
 
 using namespace aocl_utils;
-using namespace std;
+
 void cleanup();
 #endif
 
@@ -22,8 +21,9 @@ void cleanup();
 #define DEVICE_NAME_LEN 128
 static char dev_name[DEVICE_NAME_LEN];
 
-/* Error handling: check for any return errors */ 
-void checkReturnError(cl_int ret, char* errorMessage){
+
+/* Error handling: check for any return errors when called */ 
+void checkReturnError(cl_int ret, const char* errorMessage){
 	
     if(ret != CL_SUCCESS){
 
@@ -32,6 +32,7 @@ void checkReturnError(cl_int ret, char* errorMessage){
     }
 
 }
+
 
 int main()
 {
@@ -112,6 +113,7 @@ int main()
 
     /* Create Command Queue */
     command_queue = clCreateCommandQueue(context, device_id, 0, &ret);
+  
 
 #ifdef __APPLE__
     /* Load the source code containing the kernel*/
@@ -146,60 +148,44 @@ int main()
 
     /* Build Kernel Program */
     ret = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
-    
     checkReturnError(ret, "Failed to build program.");   
 
     /* Create OpenCL Kernel */
     kernel = clCreateKernel(program, "pi_calculation", &ret);
+    checkReturnError(ret, "Failed to create kernel.");   
+
+    size_t global_vals[2] = {2048, 1};
+    size_t local_vals[2] = {2, 1};
+
+    /* Allocate requested memory depending on global vals and the size (float) */
+    float *final_pi_val = (float *) calloc(global_vals[0], sizeof(float));
  
-    checkReturnError(ret, "Failed to create kernel.");
-    
-    /* Place content into buffer */
-    
     /* Create buffers */
-    cl_mem result_buffer = clCreateBuffer(context, CL_MEM_READ_WRITE |
-          CL_MEM_COPY_HOST_PTR, sizeof(result), result, NULL);
-
+    cl_mem result_buffer = clCreateBuffer(context, CL_MEM_READ_WRITE, global_vals[0]*sizeof(float), NULL, &ret);
     checkReturnError(ret, "Failed to create buffers.");
-	
-    cl_int iVal = 64;	//iteration value
+    
+    /* Amount of time to iterate for a better Pi value precision */
+    int iVal = 694;
 
-    ret = 0;
     /* Create kernel argument */
-    ret = clSetKernelArg(kernel, 0, sizeof(pattern), iVal);
-    ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &result_buffer);
-    ret |= clSetKernelArg(kernel, 2, sizeof(cl_float), NULL);
-    ret |= clSetKernelArg(kernel, 3, sizeof(cl_int), &global_size);
-    //ret |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &result_buffer);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&result_buffer);
+    ret |= clSetKernelArg(kernel, 1, global_size*sizeof(cl_float), NULL);
+    ret |= clSetKernelArg(kernel, 2, sizeof(cl_int), (void *)&iVal);
     
     checkReturnError(ret, "Couldn't set a kernel argument.");
+    
+    ret = clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, global_vals, local_vals, 0, NULL, NULL);
+    checkReturnError(ret, "Couldn't enqueue the kernel.");
 
     /* Enqueue kernel */
-    ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL, &global_size,
-          &local_size, 0, NULL, NULL);
-    
-    checkReturnError(ret, "Couldn't enqueue the kernel.");
- 
-    /* Read and print the result */
-    ret = clEnqueueReadBuffer(command_queue, result_buffer, CL_TRUE, 0,
-       sizeof(result), &result, 0, NULL, NULL);
- 
+    clEnqueueReadBuffer(command_queue, result_buffer, CL_TRUE, 0, global_vals[0]*sizeof(float), (void *)final_pi_val, 0, NULL, NULL);
     checkReturnError(ret, "Couldn't read the buffer.");
+       
+    /* Print out final value of Pi which is pi/4 * 4 */
+    printf("Pi value = %.2f\n", final_pi_val[0] * 4);
     
-	
-    printf("Pi value = %f\n", result[0]);
-
-    /*
-    printf("\nResults: \n");
-    printf("Result[0] : %d\n", result[0]);
-    printf("Result[1] : %d\n", result[1]);
-    printf("Result[2] : %d\n", result[2]);
-    printf("Result[3] : %d\n", result[3]);	
-    */	
-	
-    
-    /* free resources */
-    free(result);
+    /* free resources (allocated memory)*/
+    free(final_pi_val);
     
     clReleaseMemObject(result_buffer);
     clReleaseCommandQueue(command_queue);
@@ -214,5 +200,6 @@ int main()
 // Altera OpenCL needs this callback function implemented in main.c
 // Free the resources allocated during initialization
 void cleanup() {
+
 }
 #endif
